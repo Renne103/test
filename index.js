@@ -1,21 +1,47 @@
-const http = require("http"); 
- const mainServer =  { host: "http://api.anst-dev.ru"}
- const proxy = http.createServer();
+const http = require("http");
+const mainServer = { host: "api.anst-dev.ru", port: 80 }; // Обновлено на отдельные host и port
 
-proxy.on("request", (clientRequest, proxyResponse) => {
-    proxyResponse.setHeader('Access-Control-Allow-Origin', '*'); 
-    proxyResponse.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE'); 
-    proxyResponse.setHeader('Access-Control-Allow-Headers', 'Content-Type'); 
-    proxyResponse.setHeader('Access-Control-Allow-Credentials', true);
-const proxyRequest = http.request({ host: mainServer.host, path: clientRequest.url, method: clientRequest.method, headers: clientRequest.headers, });
+const proxy = http.createServer((clientRequest, proxyResponse) => {
+    // Обработка CORS предзапросов (OPTIONS)
+    if (clientRequest.method === 'OPTIONS') {
+        proxyResponse.writeHead(204, {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Credentials': 'true'
+        });
+        proxyResponse.end();
+        return;
+    }
 
-proxyRequest.on("response", (mainServerResponse) => { 
- proxyResponse.writeHead( mainServerResponse.statusCode, mainServerResponse.headers );
-mainServerResponse.pipe(proxyResponse); });
+    const options = {
+        host: mainServer.host,
+        port: mainServer.port,
+        path: clientRequest.url,
+        method: clientRequest.method,
+        headers: clientRequest.headers,
+    };
 
-proxyRequest.on("error", (e) => { console.log(e); });
- clientRequest.pipe(proxyRequest); });
+    const proxyRequest = http.request(options, (mainServerResponse) => {
+        proxyResponse.writeHead(mainServerResponse.statusCode, {
+            ...mainServerResponse.headers,
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Credentials': 'true'
+        });
+        mainServerResponse.pipe(proxyResponse, { end: true });
+    });
 
+    proxyRequest.on("error", (e) => {
+        console.error(e);
+        proxyResponse.writeHead(500);
+        proxyResponse.end("Internal Server Error");
+    });
 
-proxy.listen(4000, () => { console.log(`Proxy server is now listening on port ${4000}`); });
-;
+    clientRequest.pipe(proxyRequest, { end: true });
+});
+
+proxy.listen(4000, () => {
+    console.log(`Proxy server is now listening on port 4000`);
+});
